@@ -1,12 +1,10 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Fingerprint, Eye, Shield, Vote, Users, Settings } from "lucide-react";
+import { Fingerprint, Eye, Shield, Vote } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +17,7 @@ const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const handleFingerprintAuth = async () => {
+  const handleFingerprintAuth = async (): Promise<boolean> => {
     try {
       setAuthStep(1);
       
@@ -32,7 +30,8 @@ const Index = () => {
       });
       
       setAuthStep(2);
-      await handleFaceAuth();
+      const faceAuthResult = await handleFaceAuth();
+      return faceAuthResult;
     } catch (error) {
       toast({
         title: "Authentication Failed",
@@ -41,10 +40,11 @@ const Index = () => {
       });
       setIsAuthenticating(false);
       setAuthStep(0);
+      return false;
     }
   };
 
-  const handleFaceAuth = async () => {
+  const handleFaceAuth = async (): Promise<boolean> => {
     try {
       // Simulate face recognition
       await new Promise(resolve => setTimeout(resolve, 2000));
