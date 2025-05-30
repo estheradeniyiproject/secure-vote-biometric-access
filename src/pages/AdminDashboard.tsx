@@ -3,16 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   LogOut, 
   Users, 
   Vote, 
-  Plus, 
-  Edit, 
-  Trash2, 
   Play, 
   Pause, 
   StopCircle, 
@@ -24,81 +19,122 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-
-// Mock data
-const initialCandidates = [
-  {
-    id: 1,
-    name: "Sarah Johnson",
-    party: "Progressive Alliance",
-    image: "/api/placeholder/100/100",
-    votes: 1247,
-    status: "active"
-  },
-  {
-    id: 2,
-    name: "Michael Chen",
-    party: "Unity Coalition", 
-    image: "/api/placeholder/100/100",
-    votes: 1089,
-    status: "active"
-  },
-  {
-    id: 3,
-    name: "Elena Rodriguez",
-    party: "New Horizons",
-    image: "/api/placeholder/100/100",
-    votes: 945,
-    status: "active"
-  }
-];
+import { supabase } from "@/integrations/supabase/client";
+import VoterManagement from "@/components/admin/VoterManagement";
+import CandidateManagement from "@/components/admin/CandidateManagement";
+import LiveResults from "@/components/admin/LiveResults";
 
 const AdminDashboard = () => {
-  const [candidates, setCandidates] = useState(initialCandidates);
   const [votingStatus, setVotingStatus] = useState<'stopped' | 'active' | 'paused'>('active');
-  const [totalVoters] = useState(15423);
-  const [activeVoters] = useState(3281);
+  const [stats, setStats] = useState({
+    totalVoters: 0,
+    activeVoters: 0,
+    totalVotes: 0,
+    totalCandidates: 0
+  });
   const [systemStatus] = useState('operational');
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Real-time vote updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (votingStatus === 'active') {
-        setCandidates(prev => prev.map(candidate => ({
-          ...candidate,
-          votes: candidate.votes + Math.floor(Math.random() * 3)
-        })));
-      }
-    }, 3000);
-
+    fetchStats();
+    const interval = setInterval(fetchStats, 10000); // Update stats every 10 seconds
     return () => clearInterval(interval);
-  }, [votingStatus]);
+  }, []);
 
-  const totalVotes = candidates.reduce((sum, candidate) => sum + candidate.votes, 0);
+  const fetchStats = async () => {
+    try {
+      // Get total voters
+      const { count: voterCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'voter');
 
-  const handleVotingControl = (action: 'start' | 'pause' | 'stop') => {
-    setVotingStatus(action === 'start' ? 'active' : action === 'pause' ? 'paused' : 'stopped');
-    
-    const messages = {
-      start: "Voting session has been started",
-      pause: "Voting session has been paused", 
-      stop: "Voting session has been stopped"
-    };
+      // Get active (verified) voters
+      const { count: activeVoterCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'voter')
+        .eq('is_verified', true);
 
-    toast({
-      title: "Voting Control",
-      description: messages[action],
-    });
+      // Get total votes
+      const { count: voteCount } = await supabase
+        .from('votes')
+        .select('*', { count: 'exact', head: true });
+
+      // Get total candidates
+      const { count: candidateCount } = await supabase
+        .from('candidates')
+        .select('*', { count: 'exact', head: true });
+
+      setStats({
+        totalVoters: voterCount || 0,
+        activeVoters: activeVoterCount || 0,
+        totalVotes: voteCount || 0,
+        totalCandidates: candidateCount || 0
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
   };
 
-  const handleLogout = () => {
-    toast({
-      title: "Logged Out",
-      description: "Admin session ended securely",
-    });
-    navigate('/');
+  const handleVotingControl = async (action: 'start' | 'pause' | 'stop') => {
+    try {
+      // Get the current active election
+      const { data: elections } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('status', 'active')
+        .limit(1);
+
+      if (elections && elections.length > 0) {
+        const newStatus = action === 'start' ? 'active' : action === 'pause' ? 'active' : 'closed';
+        
+        await supabase
+          .from('elections')
+          .update({ status: newStatus })
+          .eq('id', elections[0].id);
+      }
+
+      setVotingStatus(action === 'start' ? 'active' : action === 'pause' ? 'paused' : 'stopped');
+      
+      const messages = {
+        start: "Voting session has been started",
+        pause: "Voting session has been paused", 
+        stop: "Voting session has been stopped"
+      };
+
+      // Log audit event
+      await supabase.rpc('log_audit_event', {
+        action_text: `VOTING_${action.toUpperCase()}`,
+        details_json: { action, timestamp: new Date().toISOString() }
+      });
+
+      toast({
+        title: "Voting Control",
+        description: messages[action],
+      });
+    } catch (error) {
+      console.error('Error controlling voting:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update voting status",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast({
+        title: "Logged Out",
+        description: "Admin session ended securely",
+      });
+      navigate('/');
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
   };
 
   return (
@@ -124,7 +160,7 @@ const AdminDashboard = () => {
                 <Users className="h-5 w-5 text-blue-600" />
                 <div>
                   <p className="text-sm text-gray-600">Total Voters</p>
-                  <p className="text-2xl font-bold">{totalVoters.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{stats.totalVoters.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -136,7 +172,7 @@ const AdminDashboard = () => {
                 <UserCheck className="h-5 w-5 text-green-600" />
                 <div>
                   <p className="text-sm text-gray-600">Active Voters</p>
-                  <p className="text-2xl font-bold">{activeVoters.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{stats.activeVoters.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -148,7 +184,7 @@ const AdminDashboard = () => {
                 <Vote className="h-5 w-5 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-600">Total Votes</p>
-                  <p className="text-2xl font-bold">{totalVotes.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{stats.totalVotes.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -213,161 +249,27 @@ const AdminDashboard = () => {
         </Card>
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="candidates" className="w-full">
+        <Tabs defaultValue="voters" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="voters">Voters</TabsTrigger>
             <TabsTrigger value="candidates">Candidates</TabsTrigger>
             <TabsTrigger value="results">Live Results</TabsTrigger>
-            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
             <TabsTrigger value="logs">Activity Logs</TabsTrigger>
           </TabsList>
 
-          {/* Candidates Management */}
+          {/* Voter Management */}
+          <TabsContent value="voters" className="space-y-4">
+            <VoterManagement />
+          </TabsContent>
+
+          {/* Candidate Management */}
           <TabsContent value="candidates" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Candidate Management</h2>
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Candidate
-              </Button>
-            </div>
-            
-            <div className="grid gap-4">
-              {candidates.map((candidate) => (
-                <Card key={candidate.id}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <Avatar className="h-16 w-16">
-                          <AvatarImage src={candidate.image} alt={candidate.name} />
-                          <AvatarFallback>
-                            {candidate.name.split(' ').map(n => n[0]).join('')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <h3 className="text-lg font-semibold">{candidate.name}</h3>
-                          <p className="text-gray-600">{candidate.party}</p>
-                          <Badge variant={candidate.status === 'active' ? 'default' : 'secondary'}>
-                            {candidate.status}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        <div className="text-right">
-                          <p className="text-sm text-gray-600">Current Votes</p>
-                          <p className="text-xl font-bold">{candidate.votes.toLocaleString()}</p>
-                        </div>
-                        <div className="flex space-x-2">
-                          <Button size="sm" variant="outline">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <CandidateManagement />
           </TabsContent>
 
           {/* Live Results */}
           <TabsContent value="results" className="space-y-4">
-            <h2 className="text-xl font-semibold">Live Election Results</h2>
-            
-            <div className="grid gap-4">
-              {candidates.map((candidate) => {
-                const percentage = totalVotes > 0 ? (candidate.votes / totalVotes) * 100 : 0;
-                
-                return (
-                  <Card key={candidate.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-4">
-                          <Avatar>
-                            <AvatarImage src={candidate.image} alt={candidate.name} />
-                            <AvatarFallback>
-                              {candidate.name.split(' ').map(n => n[0]).join('')}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <h3 className="font-semibold">{candidate.name}</h3>
-                            <p className="text-sm text-gray-600">{candidate.party}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-bold">{candidate.votes.toLocaleString()}</p>
-                          <p className="text-sm text-gray-600">{percentage.toFixed(1)}%</p>
-                        </div>
-                      </div>
-                      <Progress value={percentage} className="h-3" />
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </TabsContent>
-
-          {/* Monitoring */}
-          <TabsContent value="monitoring" className="space-y-4">
-            <h2 className="text-xl font-semibold">Live Monitoring</h2>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Eye className="h-5 w-5 mr-2" />
-                    Live Camera Feed
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-gray-900 rounded-lg aspect-video flex items-center justify-center">
-                    <div className="text-white text-center">
-                      <Monitor className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p>Camera Feed Active</p>
-                      <p className="text-sm opacity-75">Monitoring voting area</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <BarChart3 className="h-5 w-5 mr-2" />
-                    Real-time Analytics
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm">Voter Turnout</span>
-                        <span className="font-bold">{((totalVotes / totalVoters) * 100).toFixed(1)}%</span>
-                      </div>
-                      <Progress value={(totalVotes / totalVoters) * 100} />
-                    </div>
-                    
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm">System Load</span>
-                        <span className="font-bold">23%</span>
-                      </div>
-                      <Progress value={23} />
-                    </div>
-                    
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm">Network Status</span>
-                        <span className="font-bold">98%</span>
-                      </div>
-                      <Progress value={98} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <LiveResults />
           </TabsContent>
 
           {/* Activity Logs */}
@@ -377,24 +279,11 @@ const AdminDashboard = () => {
             <Card>
               <CardContent className="pt-6">
                 <div className="space-y-4">
-                  {[
-                    { time: "14:23:45", action: "Vote cast", user: "Voter #12847", status: "success" },
-                    { time: "14:23:12", action: "Biometric auth", user: "Voter #12846", status: "success" },
-                    { time: "14:22:58", action: "Login attempt", user: "Voter #12845", status: "success" },
-                    { time: "14:22:31", action: "Vote cast", user: "Voter #12844", status: "success" },
-                    { time: "14:22:15", action: "Auth failed", user: "Unknown", status: "failed" },
-                  ].map((log, index) => (
-                    <div key={index} className="flex items-center justify-between py-2 border-b last:border-b-0">
-                      <div className="flex items-center space-x-4">
-                        <span className="text-sm text-gray-500 font-mono">{log.time}</span>
-                        <span className="font-medium">{log.action}</span>
-                        <span className="text-gray-600">{log.user}</span>
-                      </div>
-                      <Badge variant={log.status === 'success' ? 'default' : 'destructive'}>
-                        {log.status}
-                      </Badge>
-                    </div>
-                  ))}
+                  <div className="text-center text-gray-500">
+                    Activity logs will be populated from the database.
+                    <br />
+                    This feature can be enhanced to show real audit trail data.
+                  </div>
                 </div>
               </CardContent>
             </Card>
