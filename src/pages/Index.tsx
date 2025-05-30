@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Fingerprint, Eye, Shield, Vote, Users, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
-  const [voterId, setVoterId] = useState('');
-  const [adminId, setAdminId] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authStep, setAuthStep] = useState(0);
   const { toast } = useToast();
@@ -20,7 +21,6 @@ const Index = () => {
 
   const handleFingerprintAuth = async () => {
     try {
-      setIsAuthenticating(true);
       setAuthStep(1);
       
       // Simulate WebAuthn fingerprint authentication
@@ -55,11 +55,7 @@ const Index = () => {
       });
       
       setAuthStep(3);
-      setTimeout(() => {
-        navigate('/voting-dashboard');
-        setIsAuthenticating(false);
-        setAuthStep(0);
-      }, 1000);
+      return true;
     } catch (error) {
       toast({
         title: "Authentication Failed",
@@ -68,44 +64,71 @@ const Index = () => {
       });
       setIsAuthenticating(false);
       setAuthStep(0);
+      return false;
     }
   };
 
-  const handleAdminLogin = async () => {
-    if (!adminId.trim()) {
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
       toast({
         title: "Missing Information",
-        description: "Please enter your admin ID",
+        description: "Please enter your email and password",
         variant: "destructive"
       });
       return;
     }
 
     setIsAuthenticating(true);
-    
-    // Simulate admin authentication
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    toast({
-      title: "Admin Login Successful",
-      description: "Welcome to the admin dashboard",
-    });
-    
-    navigate('/admin-dashboard');
-    setIsAuthenticating(false);
-  };
 
-  const handleVoterLogin = async () => {
-    if (!voterId.trim()) {
+    try {
+      // First authenticate with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      });
+
+      if (error) {
+        toast({
+          title: "Login Failed",
+          description: error.message,
+          variant: "destructive"
+        });
+        setIsAuthenticating(false);
+        return;
+      }
+
+      // Then proceed with biometric authentication
+      const biometricSuccess = await handleFingerprintAuth();
+      
+      if (biometricSuccess) {
+        // Get user profile to determine role
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        const userRole = profile?.role || 'voter';
+        
+        setTimeout(() => {
+          if (userRole === 'admin') {
+            navigate('/admin-dashboard');
+          } else {
+            navigate('/voting-dashboard');
+          }
+          setIsAuthenticating(false);
+          setAuthStep(0);
+        }, 1000);
+      }
+    } catch (error) {
       toast({
-        title: "Missing Information",
-        description: "Please enter your voter ID",
+        title: "Login Failed",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive"
       });
-      return;
+      setIsAuthenticating(false);
+      setAuthStep(0);
     }
-
-    await handleFingerprintAuth();
   };
 
   return (
@@ -157,83 +180,48 @@ const Index = () => {
           </Card>
         )}
 
-        {/* Login Tabs */}
+        {/* Login Form */}
         <Card className="shadow-2xl border-0">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
             <CardTitle className="text-2xl text-center">Secure Access Portal</CardTitle>
             <CardDescription className="text-blue-100 text-center">
-              Choose your access level below
+              Login with your credentials for biometric verification
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6">
-            <Tabs defaultValue="voter" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="voter" className="flex items-center space-x-2">
-                  <Users className="h-4 w-4" />
-                  <span>Voter Access</span>
-                </TabsTrigger>
-                <TabsTrigger value="admin" className="flex items-center space-x-2">
-                  <Settings className="h-4 w-4" />
-                  <span>Admin Access</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="voter" className="space-y-4">
-                <div className="text-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Voter Authentication</h3>
-                  <p className="text-sm text-gray-600">Requires biometric verification</p>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="voterId">Voter ID</Label>
-                    <Input
-                      id="voterId"
-                      placeholder="Enter your voter ID"
-                      value={voterId}
-                      onChange={(e) => setVoterId(e.target.value)}
-                      disabled={isAuthenticating}
-                    />
-                  </div>
-                  
-                  <Button 
-                    onClick={handleVoterLogin}
-                    disabled={isAuthenticating}
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                  >
-                    {isAuthenticating ? 'Authenticating...' : 'Start Biometric Login'}
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="admin" className="space-y-4">
-                <div className="text-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Administrator Access</h3>
-                  <p className="text-sm text-gray-600">Secure admin portal</p>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="adminId">Admin ID</Label>
-                    <Input
-                      id="adminId"
-                      placeholder="Enter your admin ID"
-                      value={adminId}
-                      onChange={(e) => setAdminId(e.target.value)}
-                      disabled={isAuthenticating}
-                    />
-                  </div>
-                  
-                  <Button 
-                    onClick={handleAdminLogin}
-                    disabled={isAuthenticating}
-                    className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
-                  >
-                    {isAuthenticating ? 'Authenticating...' : 'Admin Login'}
-                  </Button>
-                </div>
-              </TabsContent>
-            </Tabs>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isAuthenticating}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isAuthenticating}
+                />
+              </div>
+              
+              <Button 
+                onClick={handleLogin}
+                disabled={isAuthenticating}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              >
+                {isAuthenticating ? 'Authenticating...' : 'Start Biometric Login'}
+              </Button>
+            </div>
 
             {/* Quick Access Links */}
             <div className="mt-6 pt-6 border-t border-gray-200">

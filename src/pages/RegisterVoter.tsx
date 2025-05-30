@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,12 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Fingerprint, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const RegisterVoter = () => {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
+    password: '',
     phone: '',
     address: '',
     dateOfBirth: '',
@@ -75,7 +76,7 @@ const RegisterVoter = () => {
     e.preventDefault();
     
     // Validate form
-    const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'address', 'dateOfBirth', 'gender', 'idNumber'];
+    const requiredFields = ['firstName', 'lastName', 'email', 'password', 'phone', 'address', 'dateOfBirth', 'gender', 'idNumber'];
     const missingFields = requiredFields.filter(field => !formData[field]);
     
     if (missingFields.length > 0) {
@@ -89,21 +90,67 @@ const RegisterVoter = () => {
 
     setIsRegistering(true);
 
-    // Setup biometrics
-    const biometricSuccess = await handleBiometricSetup();
-    
-    if (biometricSuccess) {
-      // Simulate registration
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      toast({
-        title: "Registration Successful!",
-        description: `Voter ID: VOT${Date.now().toString().slice(-6)} has been assigned to you`,
+    try {
+      // Register with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            role: 'voter'
+          }
+        }
       });
 
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
+      if (error) {
+        toast({
+          title: "Registration Failed",
+          description: error.message,
+          variant: "destructive"
+        });
+        setIsRegistering(false);
+        return;
+      }
+
+      // Update profile with additional information
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            phone: formData.phone,
+            address: formData.address,
+            date_of_birth: formData.dateOfBirth,
+            gender: formData.gender,
+            national_id: formData.idNumber,
+          })
+          .eq('id', data.user.id);
+
+        if (profileError) {
+          console.error('Profile update error:', profileError);
+        }
+      }
+
+      // Setup biometrics
+      const biometricSuccess = await handleBiometricSetup();
+      
+      if (biometricSuccess) {
+        toast({
+          title: "Registration Successful!",
+          description: "Your account has been created. Please check your email to verify your account.",
+        });
+
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
+      }
+    } catch (error) {
+      toast({
+        title: "Registration Failed",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive"
+      });
     }
     
     setIsRegistering(false);
@@ -194,7 +241,7 @@ const RegisterVoter = () => {
                 </div>
               </div>
 
-              {/* Contact Information */}
+              {/* Authentication Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="email">Email Address</Label>
@@ -213,6 +260,22 @@ const RegisterVoter = () => {
                   </div>
                 </div>
                 <div>
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Create a strong password"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    disabled={isRegistering}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
                   <Label htmlFor="phone">Phone Number</Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -226,6 +289,17 @@ const RegisterVoter = () => {
                       required
                     />
                   </div>
+                </div>
+                <div>
+                  <Label htmlFor="idNumber">National ID Number</Label>
+                  <Input
+                    id="idNumber"
+                    placeholder="ID Number"
+                    value={formData.idNumber}
+                    onChange={(e) => handleInputChange('idNumber', e.target.value)}
+                    disabled={isRegistering}
+                    required
+                  />
                 </div>
               </div>
 
@@ -280,17 +354,6 @@ const RegisterVoter = () => {
                       <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div>
-                  <Label htmlFor="idNumber">National ID Number</Label>
-                  <Input
-                    id="idNumber"
-                    placeholder="ID Number"
-                    value={formData.idNumber}
-                    onChange={(e) => handleInputChange('idNumber', e.target.value)}
-                    disabled={isRegistering}
-                    required
-                  />
                 </div>
               </div>
 
