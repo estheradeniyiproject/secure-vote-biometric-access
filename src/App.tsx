@@ -11,6 +11,7 @@ import RegisterVoter from "./pages/RegisterVoter";
 import RegisterAdmin from "./pages/RegisterAdmin";
 import VotingDashboard from "./pages/VotingDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import UserSettings from "./pages/UserSettings";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
             <Route path="/register-admin" element={<RegisterAdmin />} />
             <Route path="/voting-dashboard" element={<VotingDashboard />} />
             <Route path="/admin-dashboard" element={<AdminDashboard />} />
+            <Route path="/settings" element={<UserSettings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

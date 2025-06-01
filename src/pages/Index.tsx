@@ -6,77 +6,66 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Fingerprint, Eye, Shield, Vote, AlertTriangle } from "lucide-react";
+import { Fingerprint, Eye, Shield, Vote, AlertTriangle, Key } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { biometricAuth } from "@/utils/biometricAuth";
+import { passkeyAuth } from "@/utils/passkeyAuth";
 
 const Index = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authStep, setAuthStep] = useState(0);
-  const [biometricError, setBiometricError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const handleBiometricAuth = async (): Promise<boolean> => {
+  const handlePasskeyAuth = async (userId: string, userEmail: string): Promise<boolean> => {
     try {
-      setAuthStep(1);
-      setBiometricError(null);
-      
-      // Check biometric support first
-      const support = await biometricAuth.checkBiometricSupport();
-      if (!support.fingerprint && !support.faceId) {
-        setBiometricError("System hardware not supported.");
-        setIsAuthenticating(false);
-        setAuthStep(0);
-        return false;
-      }
-
-      // Step 1: Fingerprint Authentication
-      toast({
-        title: "Place Your Finger",
-        description: "Please place your finger on the biometric sensor",
-      });
-
-      const fingerprintResult = await biometricAuth.authenticateFingerprint();
-      if (!fingerprintResult.success) {
-        setBiometricError(fingerprintResult.error || "Fingerprint authentication failed");
-        setIsAuthenticating(false);
-        setAuthStep(0);
-        return false;
-      }
-
-      toast({
-        title: "Fingerprint Verified ✓",
-        description: "Please look at the camera for face recognition",
-      });
-      
       setAuthStep(2);
+      setAuthError(null);
+      
+      // Check if passkey is supported
+      const supported = await passkeyAuth.checkPasskeySupport();
+      if (!supported) {
+        setAuthError("Passkey authentication is not supported on this device");
+        return false;
+      }
 
-      // Step 2: Face Recognition
-      const faceResult = await biometricAuth.authenticateFaceId();
-      if (!faceResult.success) {
-        setBiometricError(faceResult.error || "Face recognition failed");
-        setIsAuthenticating(false);
-        setAuthStep(0);
+      // Check if user has a passkey registered
+      const hasPasskey = await passkeyAuth.hasPasskeyRegistered(userId);
+      if (!hasPasskey) {
+        toast({
+          title: "Passkey Setup Required",
+          description: "Please set up passkey authentication for enhanced security",
+        });
+        setAuthError("No passkey found. Please set up passkey authentication first.");
         return false;
       }
 
       toast({
-        title: "Face Recognition Complete ✓",
-        description: "Biometric authentication successful! Redirecting...",
+        title: "Biometric Authentication",
+        description: "Please use your fingerprint, face, or PIN to authenticate",
+      });
+
+      const result = await passkeyAuth.authenticateWithPasskey(userEmail, userId);
+      if (!result.success) {
+        setAuthError(result.error || "Biometric authentication failed");
+        return false;
+      }
+
+      toast({
+        title: "Authentication Complete ✓",
+        description: "Multi-factor authentication successful! Redirecting...",
       });
       
       setAuthStep(3);
       return true;
     } catch (error) {
-      console.error('Biometric authentication error:', error);
-      setBiometricError("Biometric authentication failed. Please try again.");
-      setIsAuthenticating(false);
-      setAuthStep(0);
+      console.error('Passkey authentication error:', error);
+      setAuthError("Biometric authentication failed. Please try again.");
       return false;
     }
   };
@@ -92,10 +81,12 @@ const Index = () => {
     }
 
     setIsAuthenticating(true);
-    setBiometricError(null);
+    setAuthError(null);
 
     try {
-      // First authenticate with Supabase
+      setAuthStep(1);
+      
+      // First authenticate with Supabase (password)
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email,
         password: password,
@@ -108,11 +99,19 @@ const Index = () => {
           variant: "destructive"
         });
         setIsAuthenticating(false);
+        setAuthStep(0);
         return;
       }
 
+      setUserId(data.user.id);
+
+      toast({
+        title: "Password Verified ✓",
+        description: "Proceeding to biometric authentication...",
+      });
+
       // Then proceed with mandatory biometric authentication
-      const biometricSuccess = await handleBiometricAuth();
+      const biometricSuccess = await handlePasskeyAuth(data.user.id, data.user.email!);
       
       if (biometricSuccess) {
         // Get user profile to determine role
@@ -133,6 +132,9 @@ const Index = () => {
           setIsAuthenticating(false);
           setAuthStep(0);
         }, 1000);
+      } else {
+        setIsAuthenticating(false);
+        setAuthStep(0);
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -155,15 +157,15 @@ const Index = () => {
             <Vote className="h-12 w-12 text-blue-600 mr-3" />
             <h1 className="text-4xl font-bold text-gray-900">SecureVote</h1>
           </div>
-          <p className="text-xl text-gray-600">Biometric-Secured Online Voting System</p>
+          <p className="text-xl text-gray-600">Multi-Factor Authenticated Voting System</p>
           <div className="flex items-center justify-center mt-4 space-x-4">
             <Badge variant="secondary" className="bg-green-100 text-green-800">
-              <Fingerprint className="h-4 w-4 mr-1" />
-              Fingerprint Protected
+              <Key className="h-4 w-4 mr-1" />
+              Password + Passkey
             </Badge>
             <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-              <Eye className="h-4 w-4 mr-1" />
-              Face Recognition
+              <Fingerprint className="h-4 w-4 mr-1" />
+              Biometric Verification
             </Badge>
             <Badge variant="secondary" className="bg-purple-100 text-purple-800">
               <Shield className="h-4 w-4 mr-1" />
@@ -172,12 +174,12 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Biometric Error Alert */}
-        {biometricError && (
+        {/* Authentication Error Alert */}
+        {authError && (
           <Alert className="mb-6 border-red-200 bg-red-50">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription className="text-red-800">
-              {biometricError}
+              {authError}
             </AlertDescription>
           </Alert>
         )}
@@ -188,23 +190,23 @@ const Index = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-center space-x-4">
                 <div className={`flex items-center space-x-2 ${authStep >= 1 ? 'text-green-600' : 'text-gray-400'}`}>
-                  <Fingerprint className="h-5 w-5" />
-                  <span>Fingerprint</span>
+                  <Key className="h-5 w-5" />
+                  <span>Password</span>
                   {authStep >= 2 && <span className="text-green-600">✓</span>}
                 </div>
                 <div className="h-1 w-8 bg-gray-300 rounded">
                   <div className={`h-full bg-blue-600 rounded transition-all duration-500 ${authStep >= 2 ? 'w-full' : 'w-0'}`}></div>
                 </div>
                 <div className={`flex items-center space-x-2 ${authStep >= 2 ? 'text-green-600' : 'text-gray-400'}`}>
-                  <Eye className="h-5 w-5" />
-                  <span>Face Recognition</span>
+                  <Fingerprint className="h-5 w-5" />
+                  <span>Passkey</span>
                   {authStep >= 3 && <span className="text-green-600">✓</span>}
                 </div>
               </div>
               <div className="text-center mt-4 text-sm text-blue-800">
-                {authStep === 1 && "Please place your finger on the biometric sensor..."}
-                {authStep === 2 && "Please look at the camera for face recognition..."}
-                {authStep === 3 && "Biometric authentication complete!"}
+                {authStep === 1 && "Verifying password..."}
+                {authStep === 2 && "Please authenticate with your passkey (Touch ID, Face ID, or PIN)..."}
+                {authStep === 3 && "Multi-factor authentication complete!"}
               </div>
             </CardContent>
           </Card>
@@ -215,7 +217,7 @@ const Index = () => {
           <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
             <CardTitle className="text-2xl text-center">Secure Access Portal</CardTitle>
             <CardDescription className="text-blue-100 text-center">
-              Login with credentials + mandatory biometric verification
+              Login with password + mandatory passkey verification
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6">
@@ -249,7 +251,7 @@ const Index = () => {
                 disabled={isAuthenticating}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
-                {isAuthenticating ? 'Authenticating...' : 'Start Biometric Login'}
+                {isAuthenticating ? 'Authenticating...' : 'Start Multi-Factor Login'}
               </Button>
             </div>
 
@@ -280,25 +282,25 @@ const Index = () => {
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-white/50 backdrop-blur border-0">
             <CardContent className="pt-6 text-center">
-              <Fingerprint className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Mandatory Biometric Security</h3>
-              <p className="text-sm text-gray-600">Sequential fingerprint + face authentication</p>
+              <Key className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+              <h3 className="font-semibold">Multi-Factor Authentication</h3>
+              <p className="text-sm text-gray-600">Password + Passkey verification</p>
             </CardContent>
           </Card>
           
           <Card className="bg-white/50 backdrop-blur border-0">
             <CardContent className="pt-6 text-center">
               <Vote className="h-8 w-8 text-green-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Multiple Elections</h3>
-              <p className="text-sm text-gray-600">Time-bound voting events</p>
+              <h3 className="font-semibold">Secure Voting</h3>
+              <p className="text-sm text-gray-600">Time-bound electoral participation</p>
             </CardContent>
           </Card>
           
           <Card className="bg-white/50 backdrop-blur border-0">
             <CardContent className="pt-6 text-center">
               <Shield className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Hardware Validation</h3>
-              <p className="text-sm text-gray-600">System compatibility checks</p>
+              <h3 className="font-semibold">Platform Authenticators</h3>
+              <p className="text-sm text-gray-600">Touch ID, Face ID, Windows Hello</p>
             </CardContent>
           </Card>
         </div>
