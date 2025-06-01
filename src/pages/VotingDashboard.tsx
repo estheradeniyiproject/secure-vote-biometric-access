@@ -47,7 +47,7 @@ const VotingDashboard = () => {
 
       if (electionsError) throw electionsError;
 
-      // Fetch candidates for each election
+      // Fetch candidates for each election and merge with election data
       const electionsWithCandidates = await Promise.all(
         (eligibleElections || []).map(async (election) => {
           const { data: candidates } = await supabase
@@ -56,10 +56,18 @@ const VotingDashboard = () => {
             .eq('election_id', election.id)
             .order('name');
 
+          // Get full election data to ensure all properties are included
+          const { data: fullElection } = await supabase
+            .from('elections')
+            .select('*')
+            .eq('id', election.id)
+            .single();
+
           return {
-            ...election,
+            ...fullElection,
+            has_voted: election.has_voted,
             candidates: candidates || []
-          };
+          } as EligibleElection;
         })
       );
 

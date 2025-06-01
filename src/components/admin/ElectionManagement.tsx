@@ -25,7 +25,7 @@ const ElectionManagement = () => {
     description: '',
     start_date: '',
     end_date: '',
-    status: 'upcoming' as const
+    status: 'upcoming' as 'upcoming' | 'active' | 'closed'
   });
   const { toast } = useToast();
 
@@ -272,7 +272,7 @@ const ElectionManagement = () => {
             </div>
             <div>
               <Label htmlFor="status">Status</Label>
-              <Select value={formData.status} onValueChange={(value: any) => setFormData({...formData, status: value})}>
+              <Select value={formData.status} onValueChange={(value: 'upcoming' | 'active' | 'closed') => setFormData({...formData, status: value})}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
