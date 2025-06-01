@@ -243,6 +243,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_eligible_elections: {
+        Args: { voter_uuid: string }
+        Returns: {
+          id: string
+          title: string
+          description: string
+          start_date: string
+          end_date: string
+          status: Database["public"]["Enums"]["election_status"]
+          has_voted: boolean
+        }[]
+      }
       get_live_vote_counts: {
         Args: { election_uuid: string }
         Returns: {
@@ -254,6 +266,10 @@ export type Database = {
       get_user_role: {
         Args: { user_id: string }
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      has_user_voted: {
+        Args: { election_uuid: string; voter_uuid: string }
+        Returns: boolean
       }
       log_audit_event: {
         Args: {

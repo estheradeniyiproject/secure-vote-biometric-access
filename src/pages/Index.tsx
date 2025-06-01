@@ -1,67 +1,80 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Fingerprint, Eye, Shield, Vote } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Fingerprint, Eye, Shield, Vote, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { biometricAuth } from "@/utils/biometricAuth";
 
 const Index = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authStep, setAuthStep] = useState(0);
+  const [biometricError, setBiometricError] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const handleFingerprintAuth = async (): Promise<boolean> => {
+  const handleBiometricAuth = async (): Promise<boolean> => {
     try {
       setAuthStep(1);
+      setBiometricError(null);
       
-      // Simulate WebAuthn fingerprint authentication
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      // Check biometric support first
+      const support = await biometricAuth.checkBiometricSupport();
+      if (!support.fingerprint && !support.faceId) {
+        setBiometricError("System hardware not supported.");
+        setIsAuthenticating(false);
+        setAuthStep(0);
+        return false;
+      }
+
+      // Step 1: Fingerprint Authentication
+      toast({
+        title: "Place Your Finger",
+        description: "Please place your finger on the biometric sensor",
+      });
+
+      const fingerprintResult = await biometricAuth.authenticateFingerprint();
+      if (!fingerprintResult.success) {
+        setBiometricError(fingerprintResult.error || "Fingerprint authentication failed");
+        setIsAuthenticating(false);
+        setAuthStep(0);
+        return false;
+      }
+
       toast({
         title: "Fingerprint Verified ✓",
-        description: "Please proceed with face recognition",
+        description: "Please look at the camera for face recognition",
       });
       
       setAuthStep(2);
-      const faceAuthResult = await handleFaceAuth();
-      return faceAuthResult;
-    } catch (error) {
-      toast({
-        title: "Authentication Failed",
-        description: "Fingerprint verification failed. Please try again.",
-        variant: "destructive"
-      });
-      setIsAuthenticating(false);
-      setAuthStep(0);
-      return false;
-    }
-  };
 
-  const handleFaceAuth = async (): Promise<boolean> => {
-    try {
-      // Simulate face recognition
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      // Step 2: Face Recognition
+      const faceResult = await biometricAuth.authenticateFaceId();
+      if (!faceResult.success) {
+        setBiometricError(faceResult.error || "Face recognition failed");
+        setIsAuthenticating(false);
+        setAuthStep(0);
+        return false;
+      }
+
       toast({
         title: "Face Recognition Complete ✓",
-        description: "Authentication successful! Redirecting...",
+        description: "Biometric authentication successful! Redirecting...",
       });
       
       setAuthStep(3);
       return true;
     } catch (error) {
-      toast({
-        title: "Authentication Failed",
-        description: "Face recognition failed. Please try again.",
-        variant: "destructive"
-      });
+      console.error('Biometric authentication error:', error);
+      setBiometricError("Biometric authentication failed. Please try again.");
       setIsAuthenticating(false);
       setAuthStep(0);
       return false;
@@ -79,6 +92,7 @@ const Index = () => {
     }
 
     setIsAuthenticating(true);
+    setBiometricError(null);
 
     try {
       // First authenticate with Supabase
@@ -97,8 +111,8 @@ const Index = () => {
         return;
       }
 
-      // Then proceed with biometric authentication
-      const biometricSuccess = await handleFingerprintAuth();
+      // Then proceed with mandatory biometric authentication
+      const biometricSuccess = await handleBiometricAuth();
       
       if (biometricSuccess) {
         // Get user profile to determine role
@@ -121,6 +135,7 @@ const Index = () => {
         }, 1000);
       }
     } catch (error) {
+      console.error('Login error:', error);
       toast({
         title: "Login Failed",
         description: "An unexpected error occurred. Please try again.",
@@ -157,6 +172,16 @@ const Index = () => {
           </div>
         </div>
 
+        {/* Biometric Error Alert */}
+        {biometricError && (
+          <Alert className="mb-6 border-red-200 bg-red-50">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-red-800">
+              {biometricError}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Authentication Progress */}
         {isAuthenticating && (
           <Card className="mb-6 border-blue-200 bg-blue-50">
@@ -165,7 +190,7 @@ const Index = () => {
                 <div className={`flex items-center space-x-2 ${authStep >= 1 ? 'text-green-600' : 'text-gray-400'}`}>
                   <Fingerprint className="h-5 w-5" />
                   <span>Fingerprint</span>
-                  {authStep >= 1 && <span className="text-green-600">✓</span>}
+                  {authStep >= 2 && <span className="text-green-600">✓</span>}
                 </div>
                 <div className="h-1 w-8 bg-gray-300 rounded">
                   <div className={`h-full bg-blue-600 rounded transition-all duration-500 ${authStep >= 2 ? 'w-full' : 'w-0'}`}></div>
@@ -176,6 +201,11 @@ const Index = () => {
                   {authStep >= 3 && <span className="text-green-600">✓</span>}
                 </div>
               </div>
+              <div className="text-center mt-4 text-sm text-blue-800">
+                {authStep === 1 && "Please place your finger on the biometric sensor..."}
+                {authStep === 2 && "Please look at the camera for face recognition..."}
+                {authStep === 3 && "Biometric authentication complete!"}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -185,7 +215,7 @@ const Index = () => {
           <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
             <CardTitle className="text-2xl text-center">Secure Access Portal</CardTitle>
             <CardDescription className="text-blue-100 text-center">
-              Login with your credentials for biometric verification
+              Login with credentials + mandatory biometric verification
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6">
@@ -251,24 +281,24 @@ const Index = () => {
           <Card className="bg-white/50 backdrop-blur border-0">
             <CardContent className="pt-6 text-center">
               <Fingerprint className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Biometric Security</h3>
-              <p className="text-sm text-gray-600">Dual-factor authentication</p>
+              <h3 className="font-semibold">Mandatory Biometric Security</h3>
+              <p className="text-sm text-gray-600">Sequential fingerprint + face authentication</p>
             </CardContent>
           </Card>
           
           <Card className="bg-white/50 backdrop-blur border-0">
             <CardContent className="pt-6 text-center">
               <Vote className="h-8 w-8 text-green-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Live Voting</h3>
-              <p className="text-sm text-gray-600">Real-time vote counting</p>
+              <h3 className="font-semibold">Multiple Elections</h3>
+              <p className="text-sm text-gray-600">Time-bound voting events</p>
             </CardContent>
           </Card>
           
           <Card className="bg-white/50 backdrop-blur border-0">
             <CardContent className="pt-6 text-center">
               <Shield className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Secure & Transparent</h3>
-              <p className="text-sm text-gray-600">Tamper-proof system</p>
+              <h3 className="font-semibold">Hardware Validation</h3>
+              <p className="text-sm text-gray-600">System compatibility checks</p>
             </CardContent>
           </Card>
         </div>

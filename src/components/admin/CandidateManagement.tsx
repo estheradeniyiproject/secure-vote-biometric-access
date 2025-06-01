@@ -5,17 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Edit, Trash2, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Candidate = Tables<'candidates'>;
+type Election = Tables<'elections'>;
+
+interface CandidateWithElection extends Candidate {
+  election_title?: string;
+}
 
 const CandidateManagement = () => {
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [candidates, setCandidates] = useState<CandidateWithElection[]>([]);
+  const [elections, setElections] = useState<Election[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -25,23 +32,48 @@ const CandidateManagement = () => {
     party: '',
     bio: '',
     manifesto: '',
-    photo_url: ''
+    photo_url: '',
+    election_id: ''
   });
   const { toast } = useToast();
 
   useEffect(() => {
     fetchCandidates();
+    fetchElections();
   }, []);
+
+  const fetchElections = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('elections')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setElections(data || []);
+    } catch (error) {
+      console.error('Error fetching elections:', error);
+    }
+  };
 
   const fetchCandidates = async () => {
     try {
       const { data, error } = await supabase
         .from('candidates')
-        .select('*')
+        .select(`
+          *,
+          election:elections(title)
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCandidates(data || []);
+      
+      const candidatesWithElection = data?.map(candidate => ({
+        ...candidate,
+        election_title: candidate.election?.title
+      })) || [];
+
+      setCandidates(candidatesWithElection);
     } catch (error) {
       console.error('Error fetching candidates:', error);
       toast({
@@ -60,33 +92,31 @@ const CandidateManagement = () => {
       party: '',
       bio: '',
       manifesto: '',
-      photo_url: ''
+      photo_url: '',
+      election_id: ''
     });
   };
 
   const handleAddCandidate = async () => {
+    if (!formData.name || !formData.election_id) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      // Get the active election (for now, we'll use the first election)
-      const { data: elections } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('status', 'active')
-        .limit(1);
-
-      if (!elections || elections.length === 0) {
-        toast({
-          title: "Error",
-          description: "No active election found",
-          variant: "destructive"
-        });
-        return;
-      }
-
       const { error } = await supabase
         .from('candidates')
         .insert({
-          ...formData,
-          election_id: elections[0].id
+          name: formData.name,
+          party: formData.party,
+          bio: formData.bio,
+          manifesto: formData.manifesto,
+          photo_url: formData.photo_url,
+          election_id: formData.election_id
         });
 
       if (error) throw error;
@@ -110,12 +140,26 @@ const CandidateManagement = () => {
   };
 
   const handleUpdateCandidate = async () => {
-    if (!selectedCandidate) return;
+    if (!selectedCandidate || !formData.name || !formData.election_id) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
 
     try {
       const { error } = await supabase
         .from('candidates')
-        .update(formData)
+        .update({
+          name: formData.name,
+          party: formData.party,
+          bio: formData.bio,
+          manifesto: formData.manifesto,
+          photo_url: formData.photo_url,
+          election_id: formData.election_id
+        })
         .eq('id', selectedCandidate.id);
 
       if (error) throw error;
@@ -140,6 +184,8 @@ const CandidateManagement = () => {
   };
 
   const handleDeleteCandidate = async (candidateId: string) => {
+    if (!confirm('Are you sure you want to delete this candidate?')) return;
+
     try {
       const { error } = await supabase
         .from('candidates')
@@ -171,7 +217,8 @@ const CandidateManagement = () => {
       party: candidate.party || '',
       bio: candidate.bio || '',
       manifesto: candidate.manifesto || '',
-      photo_url: candidate.photo_url || ''
+      photo_url: candidate.photo_url || '',
+      election_id: candidate.election_id || ''
     });
     setShowEditDialog(true);
   };
@@ -193,7 +240,7 @@ const CandidateManagement = () => {
           <Users className="h-5 w-5 mr-2" />
           Candidate Management
         </h2>
-        <Button onClick={() => setShowAddDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={() => { resetForm(); setShowAddDialog(true); }} className="bg-blue-600 hover:bg-blue-700">
           <Plus className="h-4 w-4 mr-2" />
           Add Candidate
         </Button>
@@ -214,6 +261,7 @@ const CandidateManagement = () => {
                   <div>
                     <h3 className="text-lg font-semibold">{candidate.name}</h3>
                     <p className="text-gray-600">{candidate.party}</p>
+                    <p className="text-sm text-blue-600">{candidate.election_title}</p>
                     {candidate.bio && (
                       <p className="text-sm text-gray-500 mt-1">{candidate.bio.substring(0, 100)}...</p>
                     )}
@@ -247,13 +295,28 @@ const CandidateManagement = () => {
           <DialogHeader>
             <DialogTitle>Add New Candidate</DialogTitle>
             <DialogDescription>
-              Enter the candidate's information
+              Enter the candidate's information and select the election
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div>
+              <Label htmlFor="election">Election *</Label>
+              <Select value={formData.election_id} onValueChange={(value) => setFormData({...formData, election_id: value})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an election" />
+                </SelectTrigger>
+                <SelectContent>
+                  {elections.map((election) => (
+                    <SelectItem key={election.id} value={election.id}>
+                      {election.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="name">Full Name</Label>
+                <Label htmlFor="name">Full Name *</Label>
                 <Input
                   id="name"
                   value={formData.name}
@@ -322,9 +385,24 @@ const CandidateManagement = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div>
+              <Label htmlFor="edit-election">Election *</Label>
+              <Select value={formData.election_id} onValueChange={(value) => setFormData({...formData, election_id: value})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an election" />
+                </SelectTrigger>
+                <SelectContent>
+                  {elections.map((election) => (
+                    <SelectItem key={election.id} value={election.id}>
+                      {election.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="edit-name">Full Name</Label>
+                <Label htmlFor="edit-name">Full Name *</Label>
                 <Input
                   id="edit-name"
                   value={formData.name}
