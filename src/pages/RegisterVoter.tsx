@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Fingerprint, Eye } from "lucide-react";
+import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Fingerprint, Eye, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { passkeyAuth } from "@/utils/passkeyAuth";
 
 const RegisterVoter = () => {
   const [formData, setFormData] = useState({
@@ -23,7 +25,8 @@ const RegisterVoter = () => {
     idNumber: ''
   });
   const [isRegistering, setIsRegistering] = useState(false);
-  const [biometricStep, setBiometricStep] = useState(0);
+  const [registrationStep, setRegistrationStep] = useState(0); // 0: form, 1: passkey setup, 2: complete
+  const [userId, setUserId] = useState<string>('');
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -34,41 +37,48 @@ const RegisterVoter = () => {
     }));
   };
 
-  const handleBiometricSetup = async () => {
+  const handlePasskeySetup = async () => {
     try {
-      setBiometricStep(1);
+      setRegistrationStep(1);
       toast({
-        title: "Setting up Fingerprint",
-        description: "Please place your finger on the sensor",
+        title: "Setting up Passkey Authentication",
+        description: "Please use your device's biometric authenticator",
       });
 
-      // Simulate fingerprint setup
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const result = await passkeyAuth.registerPasskey(formData.email, userId);
       
-      setBiometricStep(2);
-      toast({
-        title: "Fingerprint Registered ✓",
-        description: "Now setting up face recognition",
-      });
+      if (result.success) {
+        setRegistrationStep(2);
+        toast({
+          title: "Registration Complete!",
+          description: "Your account has been created with passkey authentication enabled.",
+        });
 
-      // Simulate face recognition setup
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      setBiometricStep(3);
-      toast({
-        title: "Face Recognition Setup Complete ✓",
-        description: "Biometric profile created successfully",
-      });
-
-      return true;
+        setTimeout(() => {
+          navigate('/');
+        }, 3000);
+      } else {
+        toast({
+          title: "Passkey Setup Failed",
+          description: result.error || "You can set up passkey authentication later in settings.",
+          variant: "destructive"
+        });
+        
+        // Still complete registration, user can set up passkey later
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
+      }
     } catch (error) {
       toast({
-        title: "Biometric Setup Failed",
-        description: "Please try again",
+        title: "Passkey Setup Error",
+        description: "You can set up passkey authentication later in settings.",
         variant: "destructive"
       });
-      setBiometricStep(0);
-      return false;
+      
+      setTimeout(() => {
+        navigate('/');
+      }, 2000);
     }
   };
 
@@ -116,6 +126,8 @@ const RegisterVoter = () => {
 
       // Update profile with additional information
       if (data.user) {
+        setUserId(data.user.id);
+        
         const { error: profileError } = await supabase
           .from('profiles')
           .update({
@@ -130,20 +142,9 @@ const RegisterVoter = () => {
         if (profileError) {
           console.error('Profile update error:', profileError);
         }
-      }
 
-      // Setup biometrics
-      const biometricSuccess = await handleBiometricSetup();
-      
-      if (biometricSuccess) {
-        toast({
-          title: "Registration Successful!",
-          description: "Your account has been created. Please check your email to verify your account.",
-        });
-
-        setTimeout(() => {
-          navigate('/');
-        }, 2000);
+        // Start passkey setup
+        await handlePasskeySetup();
       }
     } catch (error) {
       toast({
@@ -151,9 +152,8 @@ const RegisterVoter = () => {
         description: "An unexpected error occurred. Please try again.",
         variant: "destructive"
       });
+      setIsRegistering(false);
     }
-    
-    setIsRegistering(false);
   };
 
   return (
@@ -165,6 +165,7 @@ const RegisterVoter = () => {
             variant="ghost" 
             onClick={() => navigate('/')}
             className="mb-4"
+            disabled={isRegistering}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Login
@@ -176,27 +177,37 @@ const RegisterVoter = () => {
           </div>
         </div>
 
-        {/* Biometric Setup Progress */}
-        {isRegistering && biometricStep > 0 && (
+        {/* Passkey Setup Progress */}
+        {isRegistering && registrationStep >= 1 && (
           <Card className="mb-6 border-green-200 bg-green-50">
             <CardContent className="pt-6">
               <div className="text-center">
-                <h3 className="font-semibold mb-4">Setting up Biometric Security</h3>
+                <h3 className="font-semibold mb-4">Setting up Secure Authentication</h3>
                 <div className="flex items-center justify-center space-x-6">
-                  <div className={`flex flex-col items-center space-y-2 ${biometricStep >= 1 ? 'text-green-600' : 'text-gray-400'}`}>
-                    <Fingerprint className="h-8 w-8" />
-                    <span className="text-sm">Fingerprint</span>
-                    {biometricStep >= 2 && <span className="text-green-600">✓</span>}
+                  <div className={`flex flex-col items-center space-y-2 ${registrationStep >= 1 ? 'text-green-600' : 'text-gray-400'}`}>
+                    <Shield className="h-8 w-8" />
+                    <span className="text-sm">Account Created</span>
+                    {registrationStep >= 1 && <span className="text-green-600">✓</span>}
                   </div>
                   <div className="h-1 w-16 bg-gray-300 rounded">
-                    <div className={`h-full bg-green-600 rounded transition-all duration-1000 ${biometricStep >= 2 ? 'w-full' : 'w-0'}`}></div>
+                    <div className={`h-full bg-green-600 rounded transition-all duration-1000 ${registrationStep >= 1 ? 'w-full' : 'w-0'}`}></div>
                   </div>
-                  <div className={`flex flex-col items-center space-y-2 ${biometricStep >= 2 ? 'text-green-600' : 'text-gray-400'}`}>
-                    <Eye className="h-8 w-8" />
-                    <span className="text-sm">Face Recognition</span>
-                    {biometricStep >= 3 && <span className="text-green-600">✓</span>}
+                  <div className={`flex flex-col items-center space-y-2 ${registrationStep >= 1 ? 'text-green-600' : 'text-gray-400'}`}>
+                    <Fingerprint className="h-8 w-8" />
+                    <span className="text-sm">Passkey Setup</span>
+                    {registrationStep >= 2 && <span className="text-green-600">✓</span>}
                   </div>
                 </div>
+                {registrationStep === 1 && (
+                  <p className="text-sm text-gray-600 mt-4">
+                    Please use your device's biometric authenticator (Touch ID, Face ID, Windows Hello, etc.)
+                  </p>
+                )}
+                {registrationStep === 2 && (
+                  <p className="text-sm text-green-600 mt-4">
+                    Registration complete! Redirecting to login...
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -357,13 +368,27 @@ const RegisterVoter = () => {
                 </div>
               </div>
 
+              {/* Security Notice */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <div className="flex items-start space-x-3">
+                  <Shield className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-blue-900 mb-1">Enhanced Security</h4>
+                    <p className="text-sm text-blue-800">
+                      After creating your account, you'll be prompted to set up passkey authentication 
+                      using your device's biometric features for enhanced security.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Submit Button */}
               <Button 
                 type="submit" 
                 disabled={isRegistering}
                 className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 py-3"
               >
-                {isRegistering ? 'Setting up your account...' : 'Register & Setup Biometrics'}
+                {isRegistering ? 'Creating your account...' : 'Register & Setup Security'}
               </Button>
             </form>
           </CardContent>

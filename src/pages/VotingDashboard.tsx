@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,12 +11,15 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Election {
-  id: number;
-  name: string;
+  id: string;
+  title: string;
   description: string;
   start_date: string;
   end_date: string;
-  is_active: boolean;
+  status: 'upcoming' | 'active' | 'closed';
+  created_at: string;
+  created_by: string;
+  updated_at: string;
 }
 
 const VotingDashboard = () => {
@@ -104,12 +108,12 @@ const VotingDashboard = () => {
               <Card key={election.id} className="bg-white/80 backdrop-blur-sm border-0 shadow-xl">
                 <CardHeader>
                   <CardTitle className="flex items-center">
-                    {election.is_active ? (
+                    {election.status === 'active' ? (
                       <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
                     ) : (
                       <Clock className="h-5 w-5 mr-2 text-gray-500" />
                     )}
-                    {election.name}
+                    {election.title}
                   </CardTitle>
                   <CardDescription>
                     {election.description}
@@ -123,7 +127,7 @@ const VotingDashboard = () => {
                     </Badge>
                   </div>
                   <p>
-                    {election.is_active ? (
+                    {election.status === 'active' ? (
                       <Button>
                         <Vote className="h-4 w-4 mr-2" />
                         Cast Your Vote

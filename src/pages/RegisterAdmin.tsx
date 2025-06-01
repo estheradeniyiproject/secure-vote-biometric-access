@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Shield, User, Mail, Phone, Key, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Shield, User, Mail, Phone, Key, AlertTriangle, Fingerprint } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { supabase } from "@/integrations/supabase/client";
+import { passkeyAuth } from "@/utils/passkeyAuth";
 
 const RegisterAdmin = () => {
   const [formData, setFormData] = useState({
@@ -23,6 +25,8 @@ const RegisterAdmin = () => {
     confirmPassword: ''
   });
   const [isRegistering, setIsRegistering] = useState(false);
+  const [registrationStep, setRegistrationStep] = useState(0); // 0: form, 1: passkey setup, 2: complete
+  const [userId, setUserId] = useState<string>('');
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -31,6 +35,51 @@ const RegisterAdmin = () => {
       ...prev,
       [field]: value
     }));
+  };
+
+  const handlePasskeySetup = async () => {
+    try {
+      setRegistrationStep(1);
+      toast({
+        title: "Setting up Admin Passkey Authentication",
+        description: "Please use your device's biometric authenticator for enhanced admin security",
+      });
+
+      const result = await passkeyAuth.registerPasskey(formData.email, userId);
+      
+      if (result.success) {
+        setRegistrationStep(2);
+        toast({
+          title: "Admin Registration Complete!",
+          description: "Your admin account has been created with passkey authentication enabled.",
+        });
+
+        setTimeout(() => {
+          navigate('/');
+        }, 3000);
+      } else {
+        toast({
+          title: "Passkey Setup Failed",
+          description: result.error || "You can set up passkey authentication later in settings.",
+          variant: "destructive"
+        });
+        
+        // Still complete registration, admin can set up passkey later
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
+      }
+    } catch (error) {
+      toast({
+        title: "Passkey Setup Error",
+        description: "You can set up passkey authentication later in settings.",
+        variant: "destructive"
+      });
+      
+      setTimeout(() => {
+        navigate('/');
+      }, 2000);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,19 +128,57 @@ const RegisterAdmin = () => {
 
     setIsRegistering(true);
 
-    // Simulate registration
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    toast({
-      title: "Admin Registration Successful!",
-      description: `Admin ID: ADM${Date.now().toString().slice(-6)} has been assigned`,
-    });
+    try {
+      // Register with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            role: 'admin'
+          }
+        }
+      });
 
-    setTimeout(() => {
-      navigate('/');
-    }, 2000);
-    
-    setIsRegistering(false);
+      if (error) {
+        toast({
+          title: "Registration Failed",
+          description: error.message,
+          variant: "destructive"
+        });
+        setIsRegistering(false);
+        return;
+      }
+
+      // Update profile with additional information
+      if (data.user) {
+        setUserId(data.user.id);
+        
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            phone: formData.phone,
+            role: 'admin'
+          })
+          .eq('id', data.user.id);
+
+        if (profileError) {
+          console.error('Profile update error:', profileError);
+        }
+
+        // Start passkey setup
+        await handlePasskeySetup();
+      }
+    } catch (error) {
+      toast({
+        title: "Registration Failed",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive"
+      });
+      setIsRegistering(false);
+    }
   };
 
   return (
@@ -103,6 +190,7 @@ const RegisterAdmin = () => {
             variant="ghost" 
             onClick={() => navigate('/')}
             className="mb-4"
+            disabled={isRegistering}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Login
@@ -114,12 +202,48 @@ const RegisterAdmin = () => {
           </div>
         </div>
 
+        {/* Passkey Setup Progress */}
+        {isRegistering && registrationStep >= 1 && (
+          <Card className="mb-6 border-orange-200 bg-orange-50">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <h3 className="font-semibold mb-4">Setting up Admin Security</h3>
+                <div className="flex items-center justify-center space-x-6">
+                  <div className={`flex flex-col items-center space-y-2 ${registrationStep >= 1 ? 'text-orange-600' : 'text-gray-400'}`}>
+                    <Shield className="h-8 w-8" />
+                    <span className="text-sm">Admin Account</span>
+                    {registrationStep >= 1 && <span className="text-orange-600">✓</span>}
+                  </div>
+                  <div className="h-1 w-16 bg-gray-300 rounded">
+                    <div className={`h-full bg-orange-600 rounded transition-all duration-1000 ${registrationStep >= 1 ? 'w-full' : 'w-0'}`}></div>
+                  </div>
+                  <div className={`flex flex-col items-center space-y-2 ${registrationStep >= 1 ? 'text-orange-600' : 'text-gray-400'}`}>
+                    <Fingerprint className="h-8 w-8" />
+                    <span className="text-sm">Biometric Security</span>
+                    {registrationStep >= 2 && <span className="text-orange-600">✓</span>}
+                  </div>
+                </div>
+                {registrationStep === 1 && (
+                  <p className="text-sm text-gray-600 mt-4">
+                    Setting up enhanced biometric authentication for admin access...
+                  </p>
+                )}
+                {registrationStep === 2 && (
+                  <p className="text-sm text-orange-600 mt-4">
+                    Admin registration complete! Redirecting to login...
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Security Notice */}
         <Alert className="mb-6 border-orange-200 bg-orange-50">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription className="text-orange-800">
             <strong>Security Notice:</strong> Admin registration requires a valid admin code and is subject to approval. 
-            All activities are logged and monitored.
+            All activities are logged and monitored. Biometric authentication will be mandatory for admin access.
           </AlertDescription>
         </Alert>
 
@@ -284,15 +408,23 @@ const RegisterAdmin = () => {
                 </div>
               </div>
 
-              {/* Password Requirements */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-semibold text-sm mb-2">Password Requirements:</h4>
-                <ul className="text-xs text-gray-600 space-y-1">
-                  <li>• At least 8 characters long</li>
-                  <li>• Include uppercase and lowercase letters</li>
-                  <li>• Include at least one number</li>
-                  <li>• Include at least one special character</li>
-                </ul>
+              {/* Enhanced Security Notice */}
+              <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                <div className="flex items-start space-x-3">
+                  <Fingerprint className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-red-900 mb-1">Enhanced Admin Security</h4>
+                    <p className="text-sm text-red-800 mb-2">
+                      After creating your admin account, you'll be required to set up passkey authentication 
+                      using biometric features for enhanced security.
+                    </p>
+                    <ul className="text-xs text-red-700 space-y-1">
+                      <li>• Biometric authentication is mandatory for admin access</li>
+                      <li>• All admin activities are logged and monitored</li>
+                      <li>• Multiple authentication factors provide enhanced security</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
 
               {/* Submit Button */}
@@ -301,7 +433,7 @@ const RegisterAdmin = () => {
                 disabled={isRegistering}
                 className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 py-3"
               >
-                {isRegistering ? 'Processing Registration...' : 'Register as Administrator'}
+                {isRegistering ? 'Creating admin account...' : 'Register as Administrator'}
               </Button>
             </form>
           </CardContent>
