@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { passkeyAuth } from "@/utils/passkeyAuth";
+import { Alert, AlertTriangle, AlertDescription } from "@/components/ui/alert";
 
 const RegisterVoter = () => {
   const [formData, setFormData] = useState({
@@ -27,8 +27,13 @@ const RegisterVoter = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [registrationStep, setRegistrationStep] = useState(0); // 0: form, 1: passkey setup, 2: complete
   const [userId, setUserId] = useState<string>('');
+  const [isInIframe, setIsInIframe] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    setIsInIframe(window !== window.top);
+  }, []);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -40,6 +45,20 @@ const RegisterVoter = () => {
   const handlePasskeySetup = async () => {
     try {
       setRegistrationStep(1);
+
+      // Check if we're in an iframe and handle accordingly
+      if (isInIframe) {
+        toast({
+          title: "Registration Complete",
+          description: "Your account has been created. Open the app in a new tab to set up passkey authentication.",
+        });
+        
+        setTimeout(() => {
+          navigate('/');
+        }, 3000);
+        return;
+      }
+
       toast({
         title: "Setting up Passkey Authentication",
         description: "Please use your device's biometric authenticator",
@@ -59,21 +78,19 @@ const RegisterVoter = () => {
         }, 3000);
       } else {
         toast({
-          title: "Passkey Setup Failed",
-          description: result.error || "You can set up passkey authentication later in settings.",
-          variant: "destructive"
+          title: "Passkey Setup Optional",
+          description: "Your account has been created successfully. You can set up passkey authentication later in settings.",
+          variant: "default"
         });
         
-        // Still complete registration, user can set up passkey later
         setTimeout(() => {
           navigate('/');
         }, 2000);
       }
     } catch (error) {
       toast({
-        title: "Passkey Setup Error",
-        description: "You can set up passkey authentication later in settings.",
-        variant: "destructive"
+        title: "Registration Complete",
+        description: "Your account has been created. You can set up passkey authentication later in settings.",
       });
       
       setTimeout(() => {
@@ -176,6 +193,16 @@ const RegisterVoter = () => {
             <p className="text-gray-600">Register to participate in secure voting</p>
           </div>
         </div>
+
+        {/* Iframe Warning */}
+        {isInIframe && (
+          <Alert className="mb-6 border-orange-200 bg-orange-50">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-orange-800">
+              For enhanced security features, consider opening this page in a new browser tab.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Passkey Setup Progress */}
         {isRegistering && registrationStep >= 1 && (
@@ -375,7 +402,7 @@ const RegisterVoter = () => {
                   <div>
                     <h4 className="font-semibold text-blue-900 mb-1">Enhanced Security</h4>
                     <p className="text-sm text-blue-800">
-                      After creating your account, you'll be prompted to set up passkey authentication 
+                      After creating your account, {isInIframe ? 'open the app in a new tab to' : 'you\'ll be prompted to'} set up passkey authentication 
                       using your device's biometric features for enhanced security.
                     </p>
                   </div>

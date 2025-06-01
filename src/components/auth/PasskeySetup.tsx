@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Fingerprint, Shield, CheckCircle, AlertTriangle } from "lucide-react";
+import { Fingerprint, Shield, CheckCircle, AlertTriangle, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { passkeyAuth } from "@/utils/passkeyAuth";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,11 +14,16 @@ const PasskeySetup = () => {
   const [hasPasskey, setHasPasskey] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
+  const [isInIframe, setIsInIframe] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
 
   useEffect(() => {
     const checkSupport = async () => {
+      // Check if we're in an iframe
+      const inIframe = window !== window.top;
+      setIsInIframe(inIframe);
+      
       const supported = await passkeyAuth.checkPasskeySupport();
       setIsSupported(supported);
       
@@ -93,11 +98,46 @@ const PasskeySetup = () => {
     }
   };
 
+  const openInNewTab = () => {
+    window.open(window.location.href, '_blank');
+  };
+
   if (isSupported === null) {
     return (
       <Card>
         <CardContent className="pt-6">
           <div className="text-center">Checking passkey support...</div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isInIframe) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Shield className="h-5 w-5 mr-2 text-orange-500" />
+            Passkey Setup
+          </CardTitle>
+          <CardDescription>
+            Enhanced biometric authentication using passkeys
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert className="border-orange-200 bg-orange-50">
+            <ExternalLink className="h-4 w-4" />
+            <AlertDescription className="text-orange-800">
+              Passkey authentication requires opening the app in a new browser tab for security reasons.
+              <Button 
+                variant="link" 
+                onClick={openInNewTab}
+                className="p-0 ml-2 text-orange-800 underline"
+              >
+                Open in new tab
+              </Button>
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
     );

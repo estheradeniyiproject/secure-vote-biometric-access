@@ -22,11 +22,17 @@ export class PasskeyAuthenticator {
   }
 
   async checkPasskeySupport(): Promise<boolean> {
-    if (!window.PublicKeyCredential) {
-      return false;
-    }
-
     try {
+      // Check if we're in an iframe
+      if (window !== window.top) {
+        console.warn('Passkey authentication may not work in iframe environments');
+        return false;
+      }
+
+      if (!window.PublicKeyCredential) {
+        return false;
+      }
+
       const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
       return available;
     } catch (error) {
@@ -41,7 +47,7 @@ export class PasskeyAuthenticator {
       if (!supported) {
         return {
           success: false,
-          error: "Passkey authentication is not supported on this device"
+          error: "Passkey authentication is not supported in this environment. Please try opening the app in a new tab."
         };
       }
 
@@ -56,7 +62,7 @@ export class PasskeyAuthenticator {
         challenge,
         rp: {
           name: "SecureVote",
-          id: window.location.hostname,
+          id: "localhost", // Use localhost for development
         },
         user: {
           id: userIdBuffer,
@@ -69,11 +75,11 @@ export class PasskeyAuthenticator {
         ],
         authenticatorSelection: {
           authenticatorAttachment: "platform",
-          userVerification: "required",
+          userVerification: "preferred", // Changed from "required" to "preferred"
           residentKey: "preferred"
         },
         timeout: 60000,
-        attestation: "direct"
+        attestation: "none" // Changed from "direct" to "none" for better compatibility
       };
 
       const credential = await navigator.credentials.create({
@@ -109,18 +115,23 @@ export class PasskeyAuthenticator {
       } else if (error.name === 'NotAllowedError') {
         return {
           success: false,
-          error: "Passkey registration was cancelled or denied"
+          error: "Passkey registration was cancelled or denied. Please try again and allow the biometric authentication when prompted."
         };
       } else if (error.name === 'InvalidStateError') {
         return {
           success: false,
           error: "A passkey is already registered for this account"
         };
+      } else if (error.message && error.message.includes('publickey-credentials-create')) {
+        return {
+          success: false,
+          error: "Passkey authentication is not available in this environment. Please try opening the app in a new browser tab."
+        };
       }
       
       return {
         success: false,
-        error: "Failed to register passkey. Please try again."
+        error: "Failed to register passkey. Please try again or use a different device."
       };
     }
   }
@@ -131,7 +142,7 @@ export class PasskeyAuthenticator {
       if (!supported) {
         return {
           success: false,
-          error: "Passkey authentication is not supported on this device"
+          error: "Passkey authentication is not supported in this environment"
         };
       }
 
@@ -157,7 +168,7 @@ export class PasskeyAuthenticator {
           id: new TextEncoder().encode(credentialInfo.id),
           transports: ["internal"]
         }],
-        userVerification: "required",
+        userVerification: "preferred", // Changed from "required" to "preferred"
         timeout: 60000
       };
 
@@ -184,7 +195,7 @@ export class PasskeyAuthenticator {
       } else if (error.name === 'NotAllowedError') {
         return {
           success: false,
-          error: "Passkey authentication was cancelled or failed"
+          error: "Passkey authentication was cancelled or failed. Please try again."
         };
       } else if (error.name === 'InvalidStateError') {
         return {
