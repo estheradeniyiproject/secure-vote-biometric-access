@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Users, Calendar, Vote, BarChart3, LogOut, User } from "lucide-react";
+import { Users, Calendar, Vote, BarChart3, LogOut, User, Shield } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,21 +72,34 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      {/* Enhanced Admin Header */}
+      <div className="bg-gradient-to-r from-red-600 to-red-800 shadow-lg border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
-              <Vote className="h-8 w-8 text-blue-600 mr-3" />
-              <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Shield className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-white">Election Admin Panel</h1>
+                  <p className="text-red-100">System Administration & Management</p>
+                </div>
+              </div>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <User className="h-4 w-4 text-gray-500" />
-                <span className="text-sm text-gray-700">{user?.email}</span>
-                <Badge variant="destructive">Admin</Badge>
+              <div className="flex items-center space-x-2 text-white">
+                <User className="h-4 w-4" />
+                <span className="text-sm">{user?.email}</span>
+                <Badge variant="destructive" className="bg-red-500/80">
+                  Admin
+                </Badge>
               </div>
-              <Button variant="outline" onClick={handleSignOut}>
+              <Button 
+                variant="outline" 
+                onClick={handleSignOut}
+                className="text-white border-white/30 hover:bg-white/10"
+              >
                 <LogOut className="h-4 w-4 mr-2" />
                 Sign Out
               </Button>
@@ -99,7 +112,7 @@ const AdminDashboard = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
+          <Card className="border-l-4 border-l-blue-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Voters</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
@@ -110,7 +123,7 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-l-4 border-l-green-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Elections</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -121,7 +134,7 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-l-4 border-l-orange-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Elections</CardTitle>
               <Vote className="h-4 w-4 text-muted-foreground" />
@@ -132,7 +145,7 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-l-4 border-l-purple-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Votes</CardTitle>
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -145,13 +158,17 @@ const AdminDashboard = () => {
         </div>
 
         {/* Management Tabs */}
-        <Tabs defaultValue="elections" className="space-y-4">
+        <Tabs defaultValue="results" className="space-y-4">
           <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="results">Live Results</TabsTrigger>
             <TabsTrigger value="elections">Elections</TabsTrigger>
             <TabsTrigger value="candidates">Candidates</TabsTrigger>
             <TabsTrigger value="voters">Voters</TabsTrigger>
-            <TabsTrigger value="results">Live Results</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="results" className="space-y-4">
+            <LiveResults />
+          </TabsContent>
 
           <TabsContent value="elections" className="space-y-4">
             <ElectionManagement />
@@ -163,10 +180,6 @@ const AdminDashboard = () => {
 
           <TabsContent value="voters" className="space-y-4">
             <VoterManagement />
-          </TabsContent>
-
-          <TabsContent value="results" className="space-y-4">
-            <LiveResults />
           </TabsContent>
         </Tabs>
       </div>
