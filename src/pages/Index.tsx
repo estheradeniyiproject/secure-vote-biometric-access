@@ -132,24 +132,41 @@ const Index = () => {
       const biometricSuccess = await handlePasskeyAuth(data.user.id, data.user.email!);
       
       if (biometricSuccess) {
-        // Get user profile to determine role
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', data.user.id)
-          .single();
+        // Get user profile to determine role with proper error handling
+        try {
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.user.id)
+            .single();
 
-        const userRole = profile?.role || 'voter';
-        
-        setTimeout(() => {
-          if (userRole === 'admin') {
-            navigate('/admin-dashboard');
-          } else {
+          if (profileError) {
+            console.error('Profile fetch error:', profileError);
+            // Default to voter if profile doesn't exist
             navigate('/voting-dashboard');
+            return;
           }
+
+          const userRole = profile?.role || 'voter';
+          
+          setTimeout(() => {
+            if (userRole === 'admin') {
+              console.log('Redirecting admin to admin dashboard');
+              navigate('/admin-dashboard');
+            } else {
+              console.log('Redirecting voter to voting dashboard');
+              navigate('/voting-dashboard');
+            }
+            setIsAuthenticating(false);
+            setAuthStep(0);
+          }, 1000);
+        } catch (error) {
+          console.error('Error fetching user role:', error);
+          // Default to voter dashboard on error
+          navigate('/voting-dashboard');
           setIsAuthenticating(false);
           setAuthStep(0);
-        }, 1000);
+        }
       } else {
         setIsAuthenticating(false);
         setAuthStep(0);

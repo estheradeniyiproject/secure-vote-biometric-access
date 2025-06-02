@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Users, Calendar, Vote, BarChart3, LogOut, User, Shield } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Users, Calendar, Vote, BarChart3, LogOut, User, Shield, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,12 +22,50 @@ const AdminDashboard = () => {
     totalVotes: 0
   });
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (user) {
+      verifyAdminAccess();
+      fetchStats();
+    }
+  }, [user]);
+
+  const verifyAdminAccess = async () => {
+    if (!user) {
+      navigate('/');
+      return;
+    }
+
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        setIsAdmin(false);
+        return;
+      }
+
+      if (profile?.role !== 'admin') {
+        console.log('User is not an admin, redirecting to voter dashboard');
+        setIsAdmin(false);
+        navigate('/voting-dashboard');
+        return;
+      }
+
+      setIsAdmin(true);
+    } catch (error) {
+      console.error('Error verifying admin access:', error);
+      setIsAdmin(false);
+      navigate('/voting-dashboard');
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -69,6 +108,43 @@ const AdminDashboard = () => {
     await signOut();
     navigate('/');
   };
+
+  // Show loading while verifying admin access
+  if (isAdmin === null) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">Verifying admin access...</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show access denied if not admin
+  if (isAdmin === false) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <Alert className="border-red-200 bg-red-50">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-red-800">
+                Access denied. Admin privileges required.
+              </AlertDescription>
+            </Alert>
+            <Button 
+              onClick={() => navigate('/voting-dashboard')} 
+              className="w-full mt-4"
+            >
+              Go to Voter Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -158,17 +234,13 @@ const AdminDashboard = () => {
         </div>
 
         {/* Management Tabs */}
-        <Tabs defaultValue="results" className="space-y-4">
+        <Tabs defaultValue="elections" className="space-y-4">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="results">Live Results</TabsTrigger>
             <TabsTrigger value="elections">Elections</TabsTrigger>
             <TabsTrigger value="candidates">Candidates</TabsTrigger>
+            <TabsTrigger value="results">Live Results</TabsTrigger>
             <TabsTrigger value="voters">Voters</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="results" className="space-y-4">
-            <LiveResults />
-          </TabsContent>
 
           <TabsContent value="elections" className="space-y-4">
             <ElectionManagement />
@@ -176,6 +248,10 @@ const AdminDashboard = () => {
 
           <TabsContent value="candidates" className="space-y-4">
             <CandidateManagement />
+          </TabsContent>
+
+          <TabsContent value="results" className="space-y-4">
+            <LiveResults />
           </TabsContent>
 
           <TabsContent value="voters" className="space-y-4">

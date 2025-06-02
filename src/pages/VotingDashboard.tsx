@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Vote, Clock, Users, LogOut, Settings, Calendar } from "lucide-react";
+import { Vote, Clock, Users, LogOut, Settings, Calendar, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -25,13 +25,48 @@ const VotingDashboard = () => {
   const [elections, setElections] = useState<Election[]>([]);
   const [selectedElection, setSelectedElection] = useState<Election | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchElections();
-  }, []);
+    if (user) {
+      verifyUserAccess();
+      fetchElections();
+    }
+  }, [user]);
+
+  const verifyUserAccess = async () => {
+    if (!user) {
+      navigate('/');
+      return;
+    }
+
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        return;
+      }
+
+      setUserRole(profile?.role || 'voter');
+
+      // If user is admin, redirect to admin dashboard
+      if (profile?.role === 'admin') {
+        console.log('Admin user detected, redirecting to admin dashboard');
+        navigate('/admin-dashboard');
+        return;
+      }
+    } catch (error) {
+      console.error('Error verifying user access:', error);
+    }
+  };
 
   const fetchElections = async () => {
     if (!user) return;
@@ -102,6 +137,24 @@ const VotingDashboard = () => {
       setSelectedElection({ ...selectedElection, has_voted: true });
     }
   };
+
+  // Show message if admin tries to access voter dashboard
+  if (userRole === 'admin') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <Alert className="border-red-200 bg-red-50">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-red-800">
+                Redirecting to Admin Dashboard...
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
