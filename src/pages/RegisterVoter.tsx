@@ -5,12 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Fingerprint, Eye, Shield } from "lucide-react";
+import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Fingerprint, Eye, Shield, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { passkeyAuth } from "@/utils/passkeyAuth";
-import { Alert, AlertTriangle, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const RegisterVoter = () => {
   const [formData, setFormData] = useState({
