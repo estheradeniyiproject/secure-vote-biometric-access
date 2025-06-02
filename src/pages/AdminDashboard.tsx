@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,50 +21,29 @@ const AdminDashboard = () => {
     totalVotes: 0
   });
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const { user, signOut } = useAuth();
+  const { user, userRole, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
-      verifyAdminAccess();
-      fetchStats();
-    }
-  }, [user]);
-
-  const verifyAdminAccess = async () => {
-    if (!user) {
-      navigate('/');
-      return;
-    }
-
-    try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching user profile:', error);
-        setIsAdmin(false);
+    if (!authLoading) {
+      if (!user) {
+        navigate('/');
         return;
       }
 
-      if (profile?.role !== 'admin') {
-        console.log('User is not an admin, redirecting to voter dashboard');
-        setIsAdmin(false);
+      // If user is not admin, redirect to voter dashboard
+      if (userRole === 'voter') {
+        console.log('Voter user detected, redirecting to voter dashboard');
         navigate('/voting-dashboard');
         return;
       }
 
-      setIsAdmin(true);
-    } catch (error) {
-      console.error('Error verifying admin access:', error);
-      setIsAdmin(false);
-      navigate('/voting-dashboard');
+      // Only fetch stats if user is admin
+      if (userRole === 'admin') {
+        fetchStats();
+      }
     }
-  };
+  }, [user, userRole, authLoading, navigate]);
 
   const fetchStats = async () => {
     try {
@@ -109,13 +87,13 @@ const AdminDashboard = () => {
     navigate('/');
   };
 
-  // Show loading while verifying admin access
-  if (isAdmin === null) {
+  // Show loading while checking auth
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Card>
           <CardContent className="pt-6">
-            <div className="text-center">Verifying admin access...</div>
+            <div className="text-center">Loading...</div>
           </CardContent>
         </Card>
       </div>
@@ -123,7 +101,7 @@ const AdminDashboard = () => {
   }
 
   // Show access denied if not admin
-  if (isAdmin === false) {
+  if (!user || (userRole && userRole !== 'admin')) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Card className="max-w-md">
@@ -140,6 +118,24 @@ const AdminDashboard = () => {
             >
               Go to Voter Dashboard
             </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show message if voter tries to access admin dashboard
+  if (userRole === 'voter') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <Alert className="border-red-200 bg-red-50">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-red-800">
+                Redirecting to Voter Dashboard...
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       </div>

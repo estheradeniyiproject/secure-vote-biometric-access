@@ -6,6 +6,7 @@ import { ArrowLeft, User, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import PasskeySetup from "@/components/auth/PasskeySetup";
+import ProfileEditor from "@/components/auth/ProfileEditor";
 
 const UserSettings = () => {
   const navigate = useNavigate();
@@ -16,6 +17,15 @@ const UserSettings = () => {
     navigate('/');
   };
 
+  const handleBack = () => {
+    const { userRole } = useAuth();
+    if (userRole === 'admin') {
+      navigate('/admin-dashboard');
+    } else {
+      navigate('/voting-dashboard');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
       <div className="max-w-4xl mx-auto">
@@ -23,7 +33,7 @@ const UserSettings = () => {
         <div className="mb-6">
           <Button 
             variant="ghost" 
-            onClick={() => navigate(-1)}
+            onClick={handleBack}
             className="mb-4"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -45,7 +55,7 @@ const UserSettings = () => {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <User className="h-5 w-5 mr-2" />
-                Profile
+                Account
               </CardTitle>
               <CardDescription>
                 Your account information
@@ -70,8 +80,11 @@ const UserSettings = () => {
             </CardContent>
           </Card>
 
-          {/* Passkey Setup */}
-          <div className="lg:col-span-2">
+          {/* Profile Editor */}
+          <div className="lg:col-span-2 space-y-6">
+            <ProfileEditor />
+            
+            {/* Passkey Setup */}
             <PasskeySetup />
           </div>
         </div>

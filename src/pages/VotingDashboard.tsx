@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,48 +24,30 @@ const VotingDashboard = () => {
   const [elections, setElections] = useState<Election[]>([]);
   const [selectedElection, setSelectedElection] = useState<Election | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const { user, signOut } = useAuth();
+  const { user, userRole, loading, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
-      verifyUserAccess();
-      fetchElections();
-    }
-  }, [user]);
-
-  const verifyUserAccess = async () => {
-    if (!user) {
-      navigate('/');
-      return;
-    }
-
-    try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching user profile:', error);
+    if (!loading) {
+      if (!user) {
+        navigate('/');
         return;
       }
 
-      setUserRole(profile?.role || 'voter');
-
       // If user is admin, redirect to admin dashboard
-      if (profile?.role === 'admin') {
+      if (userRole === 'admin') {
         console.log('Admin user detected, redirecting to admin dashboard');
         navigate('/admin-dashboard');
         return;
       }
-    } catch (error) {
-      console.error('Error verifying user access:', error);
+
+      // Only fetch elections if user is voter
+      if (userRole === 'voter') {
+        fetchElections();
+      }
     }
-  };
+  }, [user, userRole, loading, navigate]);
 
   const fetchElections = async () => {
     if (!user) return;
@@ -138,6 +119,19 @@ const VotingDashboard = () => {
     }
   };
 
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">Loading...</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Show message if admin tries to access voter dashboard
   if (userRole === 'admin') {
     return (
@@ -150,6 +144,30 @@ const VotingDashboard = () => {
                 Redirecting to Admin Dashboard...
               </AlertDescription>
             </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show access denied if not authenticated or not voter
+  if (!user || (userRole && userRole !== 'voter')) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <Alert className="border-red-200 bg-red-50">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-red-800">
+                Access denied. Voter privileges required.
+              </AlertDescription>
+            </Alert>
+            <Button 
+              onClick={() => navigate('/')} 
+              className="w-full mt-4"
+            >
+              Go to Login
+            </Button>
           </CardContent>
         </Card>
       </div>
